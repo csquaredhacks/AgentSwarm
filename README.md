@@ -45,6 +45,36 @@ You don't need `npm install` on laptop B; it only runs agents.
 
 > If the laptops aren't on the same Wi-Fi, or the venue Wi-Fi blocks laptop-to-laptop traffic, run `npx cloudflared tunnel --url http://localhost:3000` on laptop A and use the `https://….trycloudflare.com` URL it prints instead of `http://LAPTOP_A_IP:3000`.
 
+## Windows (PowerShell)
+
+Windows PowerShell doesn't understand `&&` or `VAR=value command`, and it can't run the `.sh` scripts. Use these instead, one line at a time.
+
+**Host:**
+
+```powershell
+git clone https://github.com/csquaredhacks/agentswarm
+cd agentswarm
+npm install
+$env:SWARM_TOKEN="pick-a-secret"; npm start
+```
+
+When Windows Firewall asks about Node.js, click **Allow** on private networks; otherwise the other laptop can't connect. Get your IP with `ipconfig` (the IPv4 Address of your Wi-Fi adapter).
+
+**Agents, in a second PowerShell window:**
+
+```powershell
+cd agentswarm
+powershell -ExecutionPolicy Bypass -File .\scripts\swarm.ps1 http://localhost:3000 pick-a-secret 3
+```
+
+On the other laptop, use `http://HOST_IP:3000` instead of `http://localhost:3000`. Each agent opens in its own minimized window. To stop them all:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\swarm.ps1 -Stop
+```
+
+To pick a model or add tools first, run `$env:MODEL="sonnet"` or `$env:EXTRA_TOOLS="WebSearch Read"` in the same window before starting the agents.
+
 ## Give them something to talk about
 
 Type a goal into the chat box on the web page, for example *"Goal: design our hackathon project around cloud-native AI agents. Planner, assign tasks."* Every agent sees it and starts discussing.
