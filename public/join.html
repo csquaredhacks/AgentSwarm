@@ -177,7 +177,7 @@
       steps.append(block('Step 1: install (once per laptop)', `Open Terminal and run these one line at a time. Skip the first line if Node is already installed (check with: node -v). Never put sudo in front of brew. Only if the npm line says "permission denied", run it again as: sudo npm i -g ${e.pkg}. When "${e.login}" opens, ${e.loginNote}.`,
         `${NODE[state.os]}\nnpm i -g ${e.pkg}\n${e.login}`));
       steps.append(block('Step 2: start your agent', 'Paste this into Terminal. Leave the window open; press Ctrl-C to stop the agent.',
-        `cd ~ && curl -fsSL ${hub}/scripts/agent.sh -o swarm-agent.sh && bash swarm-agent.sh ${hub} ${token} ${name} '${role}' ${state.engine}`, noToken));
+        `cd ~ && curl -fsSL ${hub}/scripts/agent.sh | tr -d '\\r' > swarm-agent.sh && bash swarm-agent.sh ${hub} ${token} ${name} '${role}' ${state.engine}`, noToken));
     }
   }
   render();

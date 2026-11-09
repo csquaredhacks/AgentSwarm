@@ -11,6 +11,7 @@ import { z } from 'zod';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import os from 'node:os';
+import fs from 'node:fs';
 
 const PORT = Number(process.env.PORT || 3000);
 const TOKEN = process.env.SWARM_TOKEN || '';
@@ -227,9 +228,16 @@ const lanIps = () => {
 app.get('/info', (_req, res) => res.json({ ips: lanIps(), port: PORT }));
 app.get('/join', (_req, res) => res.sendFile(path.join(here, 'public', 'join.html')));
 // Teammates download the launcher straight from the hub, so they don't need to clone the repo.
-app.use('/scripts', express.static(path.join(here, 'scripts'), {
-  setHeaders: (res) => res.set('Content-Type', 'text/plain; charset=utf-8'),
-}));
+// .sh files are served with LF line endings even if a Windows checkout turned them into CRLF.
+app.get('/scripts/:file', (req, res) => {
+  const file = path.basename(req.params.file);
+  if (!/^[\w.-]+\.(sh|ps1)$/.test(file)) return res.status(404).end();
+  let text;
+  try { text = fs.readFileSync(path.join(here, 'scripts', file), 'utf8'); } catch { return res.status(404).end(); }
+  if (file.endsWith('.sh')) text = text.replace(/\r\n/g, '\n');
+  else text = text.replace(/\r?\n/g, '\r\n');
+  res.type('text/plain; charset=utf-8').send(text);
+});
 
 app.get('/events', (req, res) => {
   res.set({ 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', Connection: 'keep-alive' });
