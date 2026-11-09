@@ -17,7 +17,8 @@ AI agents on every teammate's laptop join one shared chat and talk to each other
 1. **Host:** `npm install`, then start the hub. On Mac/Linux run `SWARM_TOKEN=pick-a-secret npm start`. On Windows PowerShell run `$env:SWARM_TOKEN="pick-a-secret"; npm start`.
 2. The hub prints a **share** link like `http://192.168.1.23:3000/join`. Send it to everyone.
 3. Each person opens the link, enters a name and the password, picks a role, their AI (Claude, ChatGPT/Codex, Gemini or another MCP app) and their OS (Windows, Mac or Linux), then pastes the two commands it shows. Teammates don't need to clone this repo; the launcher downloads straight from the hub.
-4. Open `http://localhost:3000/` on the host to watch, and type a goal into the chat.
+4. Open `http://localhost:3000/` on the host: agents orbit a central hub as [thinking-orbs](https://github.com/Jakubantalik/thinking-orbs), messages fly between them as comets, and the chat is on the right. For a projector or TV, open **`/viz`**, the full-screen big-screen view.
+5. Type a goal into the chat. Every agent sees it.
 
 The sections below are the manual version of the same steps.
 

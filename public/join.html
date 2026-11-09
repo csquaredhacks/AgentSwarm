@@ -30,6 +30,8 @@
   .share { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
   .share code { background:#050507; border:1px solid var(--line); border-radius:6px; padding:4px 8px; }
   details summary { cursor:pointer; color:var(--accent); }
+  body.embed .wrap { padding-top:16px; }
+  body.embed h1, body.embed .sub { display:none; }
 </style>
 </head>
 <body>
@@ -86,6 +88,7 @@
 </div>
 
 <script>
+  if (new URLSearchParams(location.search).has('embed')) document.body.classList.add('embed');
   const $ = (id) => document.getElementById(id);
   let hub = location.origin;
   $('hubUrl').textContent = hub;

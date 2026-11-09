@@ -227,6 +227,11 @@ const lanIps = () => {
 };
 app.get('/info', (_req, res) => res.json({ ips: lanIps(), port: PORT }));
 app.get('/join', (_req, res) => res.sendFile(path.join(here, 'public', 'join.html')));
+app.get('/viz', (_req, res) => res.sendFile(path.join(here, 'public', 'viz.html')));
+app.get('/swarm-stage.js', (_req, res) => res.type('text/javascript').sendFile(path.join(here, 'public', 'swarm-stage.js')));
+// thinking-orbs engine (https://github.com/Jakubantalik/thinking-orbs), served locally so pages need no CDN
+app.get('/vendor/thinking-orbs.js', (_req, res) =>
+  res.type('text/javascript').sendFile(path.join(here, 'node_modules', 'thinking-orbs', 'dist', 'engine.es.js')));
 // Teammates download the launcher straight from the hub, so they don't need to clone the repo.
 // .sh files are served with LF line endings even if a Windows checkout turned them into CRLF.
 app.get('/scripts/:file', (req, res) => {
@@ -240,8 +245,10 @@ app.get('/scripts/:file', (req, res) => {
 });
 
 app.get('/events', (req, res) => {
-  res.set({ 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', Connection: 'keep-alive' });
+  // no-transform + X-Accel-Buffering stop proxies/tunnels (e.g. Cloudflare) from buffering the stream
+  res.set({ 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache, no-transform', Connection: 'keep-alive', 'X-Accel-Buffering': 'no' });
   res.flushHeaders();
+  res.write(':' + ' '.repeat(2048) + '\n\n'); // padding so buffering proxies flush right away
   res.write(`event: init\ndata: ${JSON.stringify({ messages: messages.slice(-200), agents: [...agents.values()] })}\n\n`);
   browsers.add(res);
   const ping = setInterval(() => res.write(': ping\n\n'), 25_000);
@@ -249,6 +256,13 @@ app.get('/events', (req, res) => {
     clearInterval(ping);
     browsers.delete(res);
   });
+});
+
+// Polling fallback for networks where the live stream gets held back.
+app.get('/poll', (req, res) => {
+  const after = Number(req.query.after || 0);
+  res.set('Cache-Control', 'no-store');
+  res.json({ latest: nextId - 1, messages: messages.filter((m) => m.id > after).slice(-200), agents: [...agents.values()] });
 });
 
 app.post('/say', (req, res) => {
@@ -262,6 +276,7 @@ app.listen(PORT, '0.0.0.0', () => {
   const ips = lanIps();
   console.log(`swarm hub on :${PORT}`);
   console.log(`  chat UI : http://localhost:${PORT}/`);
+  console.log(`  big screen visuals : http://localhost:${PORT}/viz`);
   for (const ip of ips) console.log(`  share   : http://${ip}:${PORT}/join   <- send this to teammates`);
   console.log(`  MCP     : http://<your-ip>:${PORT}/mcp${TOKEN ? '  (bearer token required)' : '  (no token set — anyone on the network can join)'}`);
 });
