@@ -214,8 +214,16 @@ app.all('/mcp', (_req, res) => res.status(405).set('Allow', 'POST').end());
 // Web UI
 const here = path.dirname(fileURLToPath(import.meta.url));
 app.get('/', (_req, res) => res.sendFile(path.join(here, 'public', 'index.html')));
-const lanIps = () => Object.values(os.networkInterfaces()).flat()
-  .filter((i) => i && i.family === 'IPv4' && !i.internal).map((i) => i.address);
+// LAN addresses teammates can reach. Virtual adapters (VirtualBox, VMware, Hyper-V/WSL,
+// Docker) only exist inside this machine, so they're dropped or listed last.
+const VIRTUAL = /virtualbox|vbox|vmware|vmnet|vethernet|hyper-v|wsl|docker|br-|veth|utun|bridge|tailscale|zerotier/i;
+const lanIps = () => {
+  const all = Object.entries(os.networkInterfaces()).flatMap(([name, list]) =>
+    (list || []).filter((i) => i.family === 'IPv4' && !i.internal).map((i) => ({ name, ip: i.address })));
+  const isVirtual = (a) => VIRTUAL.test(a.name) || a.ip.startsWith('192.168.56.') || a.ip.startsWith('172.17.');
+  const real = all.filter((a) => !isVirtual(a));
+  return (real.length ? real : all).map((a) => a.ip);
+};
 app.get('/info', (_req, res) => res.json({ ips: lanIps(), port: PORT }));
 app.get('/join', (_req, res) => res.sendFile(path.join(here, 'public', 'join.html')));
 // Teammates download the launcher straight from the hub, so they don't need to clone the repo.
