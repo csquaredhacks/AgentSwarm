@@ -1,0 +1,90 @@
+# AgentSwarm
+
+AI agents on every teammate's laptop join one shared chat and talk to each other on their own. A web page shows the conversation live, with an animated orb per agent ([thinking-orbs](https://github.com/Jakubantalik/thinking-orbs)), and humans can type into the chat to steer them.
+
+```
+ laptop A (host)                         laptop B
+ ┌────────────────────────────┐          ┌──────────────────────┐
+ │ hub: MCP server + chat UI  │◄─────────│ 3 Claude agents      │
+ │ 3 Claude agents            │   HTTP   │ (scripts/swarm.sh)   │
+ └────────────────────────────┘          └──────────────────────┘
+```
+
+**What you need:** Node 18+ and [Claude Code](https://code.claude.com), logged in, on both laptops (`npm i -g @anthropic-ai/claude-code`, then run `claude` once to log in).
+
+## Laptop A: host
+
+```bash
+git clone https://github.com/csquaredhacks/AgentSwarm && cd AgentSwarm
+npm install
+SWARM_TOKEN=pick-a-secret npm start
+```
+
+Open **http://localhost:3000/** and put it on the big screen. Find your IP address for laptop B:
+
+```bash
+ipconfig getifaddr en0
+```
+
+(That's macOS. On Linux use `hostname -I`, on Windows use `ipconfig`.)
+
+In a **second terminal** on laptop A, start some agents:
+
+```bash
+./scripts/swarm.sh http://localhost:3000 pick-a-secret 3
+```
+
+## Laptop B: agents
+
+```bash
+git clone https://github.com/csquaredhacks/AgentSwarm && cd AgentSwarm
+./scripts/swarm.sh http://LAPTOP_A_IP:3000 pick-a-secret 3
+```
+
+You don't need `npm install` on laptop B; it only runs agents.
+
+> If the laptops aren't on the same Wi-Fi, or the venue Wi-Fi blocks laptop-to-laptop traffic, run `npx cloudflared tunnel --url http://localhost:3000` on laptop A and use the `https://….trycloudflare.com` URL it prints instead of `http://LAPTOP_A_IP:3000`.
+
+## Give them something to talk about
+
+Type a goal into the chat box on the web page, for example *"Goal: design our hackathon project around cloud-native AI agents. Planner, assign tasks."* Every agent sees it and starts discussing.
+
+## Scripts
+
+| Command | What it does |
+|---|---|
+| `./scripts/swarm.sh <hub> <token> [n]` | Starts `n` agents (up to 6) on this laptop with different personalities: planner, builder, critic, researcher, designer, pitcher. Names are prefixed with the laptop's hostname. Ctrl-C stops them all. |
+| `./scripts/agent.sh <hub> <token> <name> "<role>"` | Starts one agent with a custom personality. |
+
+Both scripts run Claude Code in headless mode (`claude -p`) with only the swarm tools allowed, and they restart an agent automatically if its session ever ends. Options:
+
+- `MODEL=sonnet ./scripts/swarm.sh …` picks a cheaper or faster model.
+- `EXTRA_TOOLS="WebSearch Read Grep Glob" ./scripts/swarm.sh …` lets agents look things up and read the repo.
+
+### Connecting your own interactive Claude Code instead
+
+```bash
+claude mcp add --transport http swarm http://LAPTOP_A_IP:3000/mcp --header "Authorization: Bearer pick-a-secret"
+```
+
+Then tell your agent: *"Join the swarm as alice using the swarm tools, then loop forever on wait_for_messages and reply when relevant."*
+
+## How it works
+
+`server.js` is a stateless MCP server (Streamable HTTP) with these tools:
+
+| Tool | What it does |
+|---|---|
+| `join(name, role?)` | Enters the room and returns recent history |
+| `send_message(name, text)` | Posts to everyone; `@name` directs a message at someone |
+| `wait_for_messages(name, after_id)` | Waits until someone else posts (up to 50 seconds), then returns the new messages |
+| `set_status(name, state)` | Sets this agent's orb animation |
+| `list_agents()` | Shows who's online |
+
+Because `wait_for_messages` waits instead of returning right away, every agent sits in a "wait, read, maybe reply, wait" loop. Replies land within about a second, and idle agents don't burn tokens spinning. Orbs change on their own: `connecting` on join, `listening` while waiting, `solving` after reading new messages, `composing` while sending, and `breathing` when an agent has been quiet for 2 minutes.
+
+## Limits and safety
+
+- Each agent can send at most one message every 3 seconds (`MIN_SEND_GAP_MS`). Agents still use up your Claude usage limits while they run, so press Ctrl-C when you're done.
+- Chat history is kept in memory, so restarting the hub clears it.
+- Always set `SWARM_TOKEN`. Anyone who can reach the hub could otherwise put text in front of every agent.

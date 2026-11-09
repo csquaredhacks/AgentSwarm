@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Swarm Chat</title>
+<style>
+  :root { --bg:#0b0b0d; --panel:#141418; --line:#26262c; --ink:#e9e9ee; --dim:#8a8a96; --accent:#9ad1ff; --sys:#6f6f7a; }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink); font:14px/1.45 ui-sans-serif, system-ui, -apple-system, sans-serif; height:100vh; display:grid; grid-template-columns: 280px 1fr; }
+  aside { border-right:1px solid var(--line); background:var(--panel); padding:16px; overflow:auto; }
+  h1 { font-size:13px; letter-spacing:.08em; text-transform:uppercase; color:var(--dim); margin:0 0 14px; }
+  .agent { display:flex; gap:12px; align-items:center; padding:8px 4px; border-bottom:1px solid var(--line); }
+  .agent canvas, .agent .dot { flex:none; }
+  .dot { width:64px; height:64px; display:grid; place-items:center; }
+  .dot::after { content:''; width:14px; height:14px; border-radius:50%; background:var(--accent); animation:pulse 1.4s infinite; }
+  @keyframes pulse { 50% { opacity:.3; } }
+  .agent b { display:block; }
+  .agent small { color:var(--dim); display:block; }
+  main { display:flex; flex-direction:column; min-height:0; }
+  #log { flex:1; overflow:auto; padding:16px 20px; }
+  .msg { margin:0 0 10px; max-width:900px; }
+  .msg .who { font-weight:600; color:var(--accent); margin-right:8px; }
+  .msg .t { color:var(--dim); font-size:11px; margin-right:8px; font-variant-numeric:tabular-nums; }
+  .msg.system { color:var(--sys); font-style:italic; }
+  .msg.human .who { color:#ffd68a; }
+  .msg .body { white-space:pre-wrap; }
+  form { display:flex; gap:8px; padding:12px 16px; border-top:1px solid var(--line); background:var(--panel); }
+  input { background:var(--bg); color:var(--ink); border:1px solid var(--line); border-radius:8px; padding:10px 12px; font:inherit; }
+  #from { width:120px; } #text { flex:1; }
+  button { background:var(--accent); color:#000; border:0; border-radius:8px; padding:0 16px; font-weight:600; cursor:pointer; }
+  @media (max-width: 700px) { body { grid-template-columns:1fr; grid-template-rows:auto 1fr; } aside { max-height:30vh; border-right:0; border-bottom:1px solid var(--line); } }
+</style>
+</head>
+<body data-theme="dark">
+<aside><h1>Agents</h1><div id="agents"></div></aside>
+<main>
+  <div id="log"></div>
+  <form id="f"><input id="from" placeholder="your name" /><input id="text" placeholder="Say something to the swarm…" autocomplete="off" /><button>Send</button></form>
+</main>
+<script type="module">
+  const log = document.getElementById('log');
+  const agentsEl = document.getElementById('agents');
+  const agents = new Map();
+
+  // Thinking orbs (React component) from a CDN; fall back to a pulsing dot if offline.
+  let React, createRoot, ThinkingOrb, root;
+  try {
+    React = (await import('https://esm.sh/react@18.3.1')).default;
+    ({ createRoot } = await import('https://esm.sh/react-dom@18.3.1/client?deps=react@18.3.1'));
+    ({ ThinkingOrb } = await import('https://esm.sh/thinking-orbs@0.3.1?deps=react@18.3.1'));
+    root = createRoot(agentsEl);
+  } catch (e) { console.warn('orbs unavailable, using fallback', e); }
+
+  function renderAgents() {
+    const list = [...agents.values()].sort((a, b) => b.lastSeen - a.lastSeen);
+    if (root) {
+      const h = React.createElement;
+      root.render(list.map(a => h('div', { className: 'agent', key: a.name },
+        h(ThinkingOrb, { state: a.state, size: 64, theme: 'dark' }),
+        h('div', null, h('b', null, a.name), h('small', null, a.state), a.note ? h('small', null, a.note) : null))));
+    } else {
+      agentsEl.innerHTML = '';
+      for (const a of list) {
+        const d = document.createElement('div'); d.className = 'agent';
+        d.innerHTML = '<div class="dot"></div><div><b></b><small></small></div>';
+        d.querySelector('b').textContent = a.name;
+        d.querySelector('small').textContent = a.state + (a.note ? ' — ' + a.note : '');
+        agentsEl.append(d);
+      }
+    }
+  }
+
+  function addMsg(m) {
+    const stick = log.scrollHeight - log.scrollTop - log.clientHeight < 80;
+    const el = document.createElement('div');
+    el.className = 'msg' + (m.from === 'system' ? ' system' : m.from.startsWith('👤') ? ' human' : '');
+    const t = new Date(m.ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    el.innerHTML = '<span class="t"></span><span class="who"></span><span class="body"></span>';
+    el.querySelector('.t').textContent = t;
+    el.querySelector('.who').textContent = m.from === 'system' ? '' : m.from;
+    el.querySelector('.body').textContent = m.text;
+    log.append(el);
+    if (stick) log.scrollTop = log.scrollHeight;
+  }
+
+  const es = new EventSource('/events');
+  es.addEventListener('init', e => {
+    const d = JSON.parse(e.data);
+    log.innerHTML = ''; agents.clear();
+    d.messages.forEach(addMsg); d.agents.forEach(a => agents.set(a.name, a)); renderAgents();
+    log.scrollTop = log.scrollHeight;
+  });
+  es.addEventListener('message', e => addMsg(JSON.parse(e.data)));
+  es.addEventListener('agent', e => { const a = JSON.parse(e.data); agents.set(a.name, a); renderAgents(); });
+
+  const from = document.getElementById('from');
+  try { from.value = localStorage.getItem('swarm-name') || ''; } catch {}
+  document.getElementById('f').addEventListener('submit', async ev => {
+    ev.preventDefault();
+    const text = document.getElementById('text');
+    if (!text.value.trim()) return;
+    try { localStorage.setItem('swarm-name', from.value); } catch {}
+    await fetch('/say', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ from: from.value || 'human', text: text.value }) });
+    text.value = '';
+  });
+</script>
+</body>
+</html>
