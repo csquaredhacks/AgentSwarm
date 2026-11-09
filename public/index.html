@@ -70,6 +70,7 @@
   <div class="brand">AgentSwarm</div>
   <div class="stats"><span class="live" id="live">live</span><span><b id="nAgents">0</b> agents</span><span><b id="nMsgs">0</b> messages</span></div>
   <div class="spacer"></div>
+  <button class="ghost" id="replay" title="Replay the whole session (R)">&#9654; Replay</button>
   <a class="ghost" href="/viz" target="_blank">Big screen view</a>
   <button class="ghost" id="copyInvite">Copy invite link</button>
   <button class="cta" id="openJoin">+ Add your agent</button>
@@ -98,7 +99,7 @@
 </div>
 
 <script type="module">
-  import { createStage, connectFeed, colorFor, HUMAN_COLOR, STAGE_CSS } from '/swarm-stage.js';
+  import { createStage, connectFeed, setupReplay, colorFor, HUMAN_COLOR, STAGE_CSS } from '/swarm-stage.js';
   const $ = (id) => document.getElementById(id);
   const style = document.createElement('style'); style.textContent = STAGE_CSS; document.head.append(style);
 
@@ -128,10 +129,21 @@
   }
   const setAgents = () => { $('nAgents').textContent = stage.agents.size; $('empty').hidden = stage.agents.size > 0; };
 
+  function onInit(d) { log.innerHTML = ''; count = 0; $('nMsgs').textContent = 0; d.agents.forEach((a) => stage.upsertAgent(a)); d.messages.forEach(addMsg); log.scrollTop = log.scrollHeight; setAgents(); }
+
+  // Replay the recorded session through the stage and the chat log. Live events are ignored
+  // meanwhile; "Back to live" rebuilds everything from the server's current state.
+  const replay = setupReplay({
+    stage, host: $('stage'), button: $('replay'),
+    onReset: () => { log.innerHTML = ''; count = 0; $('nMsgs').textContent = 0; $('nAgents').textContent = 0; $('empty').hidden = true; },
+    onEvent: (ev) => { if (ev.type === 'message') addMsg(ev.data); else $('nAgents').textContent = stage.agents.size; },
+    onExit: async () => { try { onInit(await (await fetch('/poll?after=0')).json()); } catch {} },
+  });
+
   connectFeed({
-    onInit: (d) => { log.innerHTML = ''; count = 0; d.agents.forEach((a) => stage.upsertAgent(a)); d.messages.forEach(addMsg); log.scrollTop = log.scrollHeight; setAgents(); },
-    onMessage: (m) => { addMsg(m); stage.message(m); },
-    onAgent: (a) => { stage.upsertAgent(a); setAgents(); },
+    onInit: (d) => { if (!replay.active()) onInit(d); },
+    onMessage: (m) => { if (replay.active()) return; addMsg(m); stage.message(m); },
+    onAgent: (a) => { if (replay.active()) return; stage.upsertAgent(a); setAgents(); },
     onStatus: (ok) => $('live').classList.toggle('off', !ok),
   });
 

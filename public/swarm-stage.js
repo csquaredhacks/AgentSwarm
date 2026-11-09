@@ -176,6 +176,22 @@ export function createStage(root, opts = {}) {
     targets.forEach((n, i) => packets.push({ from: 'hub', to: n, color, t0: now + delay + i * 0.05, dur: 0.85, hot: mentioned.length > 0 }));
   }
 
+  // Wipe the stage back to an empty hub (used before a replay and when returning to live).
+  function reset() {
+    for (const a of agents.values()) { clearTimeout(a.el._t); a.el.remove(); }
+    agents.clear();
+    packets.length = 0;
+    waves.length = 0;
+    clearTimeout(hub._t);
+    hub.querySelector('.swarm-bubble').classList.remove('show');
+    hub.classList.remove('talking');
+    clearTimeout(hubOrb._t);
+    hubOrb.set('connecting');
+    hub.querySelector('.swarm-state').textContent = '';
+    root.dataset.agents = 0;
+    spin = 0;
+  }
+
   const posOf = (who) => (who === 'hub' ? hubPos : agents.get(who)?.pos);
 
   frameHooks.add((t) => {
@@ -276,7 +292,105 @@ export function createStage(root, opts = {}) {
     g.globalCompositeOperation = 'source-over';
   });
 
-  return { upsertAgent, message, agents, hubOrb };
+  return { upsertAgent, message, reset, agents, hubOrb };
+}
+
+// ---------- replay: play the recorded session back through the stage ----------
+// events: [{ t, type: 'agent' | 'message', data }] from GET /timeline. Long quiet gaps are
+// squeezed to maxGap so a long session replays in a watchable time; `speed` divides every gap.
+export function replayTimeline(stage, events, { speed = 2, maxGap = 2000, onEvent, onDone } = {}) {
+  let i = 0, timer = null, stopped = false, spd = speed;
+  const next = () => {
+    if (stopped) return;
+    if (i >= events.length) {
+      timer = setTimeout(() => { if (!stopped) onDone?.(); }, 3500); // let the last animation finish
+      return;
+    }
+    const ev = events[i++];
+    if (ev.type === 'agent') stage.upsertAgent(ev.data); else stage.message(ev.data);
+    onEvent?.(ev, i, events.length);
+    if (i >= events.length) return next();
+    timer = setTimeout(next, Math.min(maxGap, Math.max(0, events[i].t - ev.t)) / spd);
+  };
+  next();
+  return {
+    stop() { stopped = true; clearTimeout(timer); },
+    setSpeed(n) { spd = n; },
+  };
+}
+
+// Wires a "Replay" button to a floating control bar (progress, speed, replay again, back to live).
+// The page decides what else changes during a replay through the callbacks:
+//   onReset()               -> a replay is (re)starting: clear the chat log / ticker / counters
+//   onEvent(ev)             -> one recorded event was just played: append it to the log
+//   onExit()                -> back to live: rebuild everything from current server state
+// While `replay.active()` is true the page should ignore live feed events; onExit resyncs them.
+export function setupReplay({ stage, host, button, onReset, onEvent, onExit }) {
+  const SPEEDS = [1, 2, 4, 8];
+  let speed = 2, ctl = null, active = false;
+  const bar = document.createElement('div');
+  bar.className = 'swarm-replay';
+  bar.hidden = true;
+  bar.innerHTML = '<span class="rp-tag">Replay</span><div class="rp-track"><i></i></div><span class="rp-count"></span>' +
+    '<button class="rp-speed"></button><button class="rp-again">↻ Again</button><button class="rp-exit">Back to live</button>';
+  host.append(bar);
+  const $ = (c) => bar.querySelector(c);
+  const setSpeedLabel = () => { $('.rp-speed').textContent = speed + '×'; };
+  setSpeedLabel();
+
+  const toast = (text) => {
+    const old = button.textContent;
+    button.textContent = text;
+    setTimeout(() => { button.textContent = old; }, 1800);
+  };
+
+  async function start() {
+    let events;
+    try { events = await (await fetch('/timeline')).json(); } catch { events = []; }
+    if (!events.length) return toast('Nothing to replay yet');
+    ctl?.stop();
+    active = true;
+    bar.hidden = false;
+    bar.classList.remove('done');
+    $('.rp-tag').textContent = 'Replay';
+    $('.rp-track i').style.width = '0%';
+    stage.reset();
+    onReset?.();
+    ctl = replayTimeline(stage, events, {
+      speed,
+      onEvent: (ev, i, n) => {
+        onEvent?.(ev);
+        $('.rp-track i').style.width = (i / n) * 100 + '%';
+        $('.rp-count').textContent = `${i} / ${n}`;
+      },
+      onDone: () => { bar.classList.add('done'); $('.rp-tag').textContent = 'Replay finished'; },
+    });
+    ctl.setSpeed(speed);
+  }
+
+  async function exit() {
+    if (!active) return;
+    ctl?.stop();
+    active = false;
+    bar.hidden = true;
+    stage.reset();
+    await onExit?.();
+  }
+
+  button.addEventListener('click', start);
+  $('.rp-again').addEventListener('click', start);
+  $('.rp-exit').addEventListener('click', exit);
+  $('.rp-speed').addEventListener('click', () => {
+    speed = SPEEDS[(SPEEDS.indexOf(speed) + 1) % SPEEDS.length];
+    setSpeedLabel();
+    ctl?.setSpeed(speed);
+  });
+  addEventListener('keydown', (e) => {
+    if (e.target.closest?.('input, textarea, select') || e.metaKey || e.ctrlKey || e.altKey) return;
+    if (e.key === 'r' || e.key === 'R') start();
+    else if (e.key === 'Escape') exit();
+  });
+  return { active: () => active, start, exit };
 }
 
 // ---------- shared live feed: server-sent events, with a polling fallback ----------
@@ -338,4 +452,16 @@ export const STAGE_CSS = `
 .swarm-bubble { position:absolute; left:0; bottom:calc(var(--r) + 18px); transform:translateX(-50%) translateY(8px) scale(.94); transform-origin:50% 100%; width:max-content; max-width:290px; background:rgba(20,22,32,.95); border:1px solid color-mix(in srgb, var(--c) 60%, #2a2d3a); color:#eef0f6; padding:9px 13px; border-radius:14px; font-size:13px; line-height:1.4; opacity:0; transition:opacity .25s, transform .35s cubic-bezier(.2,1.4,.4,1); box-shadow:0 10px 40px rgba(0,0,0,.6), 0 0 26px color-mix(in srgb, var(--c) 20%, transparent); z-index:5; }
 .swarm-bubble.show { opacity:1; transform:translateX(-50%) translateY(0) scale(1); }
 .swarm-bubble::after { content:''; position:absolute; top:100%; left:50%; transform:translateX(-50%); border:7px solid transparent; border-top-color:color-mix(in srgb, var(--c) 60%, #2a2d3a); }
+.swarm-replay { position:absolute; left:50%; bottom:18px; transform:translateX(-50%); z-index:20; display:flex; align-items:center; gap:10px; padding:8px 10px 8px 14px; background:rgba(16,18,26,.9); border:1px solid #2c3142; border-radius:999px; backdrop-filter:blur(8px); box-shadow:0 10px 40px rgba(0,0,0,.6); font:12.5px/1 ui-sans-serif, system-ui, sans-serif; color:#9aa0b8; white-space:nowrap; }
+.swarm-replay[hidden] { display:none; }
+.swarm-replay .rp-tag { color:#ffb47a; font-weight:700; letter-spacing:.16em; text-transform:uppercase; font-size:11px; }
+.swarm-replay .rp-track { width:min(220px, 24vw); height:4px; border-radius:2px; background:#262a38; overflow:hidden; }
+.swarm-replay .rp-track i { display:block; height:100%; width:0; background:linear-gradient(90deg, #8fd3ff, #b49cff, #ff8fbd); transition:width .25s linear; }
+.swarm-replay .rp-count { font-variant-numeric:tabular-nums; min-width:62px; text-align:right; }
+.swarm-replay button { font:inherit; background:#151720; border:1px solid #2c3142; color:#eef0f6; border-radius:999px; padding:7px 12px; cursor:pointer; }
+.swarm-replay button:hover { border-color:#8fd3ff; }
+.swarm-replay .rp-exit { background:#8fd3ff; border-color:#8fd3ff; color:#04121f; font-weight:700; }
+.swarm-replay.done .rp-speed, .swarm-replay.done .rp-track, .swarm-replay.done .rp-count { display:none; }
+.swarm-replay.done .rp-tag { color:#79e6b8; }
+@media (max-width:760px) { .swarm-replay { max-width:calc(100% - 24px); flex-wrap:wrap; justify-content:center; border-radius:18px; } }
 `;

@@ -24,6 +24,13 @@ const agents = new Map(); // name -> { name, state, note, lastSeen, lastSent }
 let nextId = 1;
 const waiters = new Set(); // pending wait_for_messages resolvers
 const browsers = new Set(); // SSE responses for the web UI
+// Everything the stage animates (agents joining, orb state changes, messages), in order,
+// so the web UI can replay the whole session at the end. { t, type: 'agent' | 'message', data }
+const timeline = [];
+function record(type, data) {
+  timeline.push({ t: Date.now(), type, data });
+  if (timeline.length > 5000) timeline.shift();
+}
 
 function broadcast(event, data) {
   const payload = `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
@@ -31,12 +38,15 @@ function broadcast(event, data) {
 }
 
 function touch(name, state, note) {
-  const a = agents.get(name) || { name, state: 'connecting', note: '', lastSeen: 0, lastSent: 0 };
+  const existing = agents.get(name);
+  const a = existing || { name, state: 'connecting', note: '', lastSeen: 0, lastSent: 0 };
+  const before = existing && `${a.state}|${a.note}`;
   a.lastSeen = Date.now();
   if (state) a.state = state;
   if (note !== undefined) a.note = note;
   agents.set(name, a);
   broadcast('agent', a);
+  if (before !== `${a.state}|${a.note}`) record('agent', { name: a.name, state: a.state, note: a.note });
   return a;
 }
 
@@ -45,6 +55,7 @@ function post(from, text) {
   messages.push(msg);
   if (messages.length > 2000) messages.shift();
   broadcast('message', msg);
+  record('message', msg);
   for (const w of [...waiters]) w();
   return msg;
 }
@@ -64,6 +75,7 @@ setInterval(() => {
     if (a.state !== 'breathing' && Date.now() - a.lastSeen > 120_000) {
       a.state = 'breathing';
       broadcast('agent', a);
+      record('agent', { name: a.name, state: a.state, note: a.note });
     }
   }
 }, 15_000);
@@ -263,6 +275,12 @@ app.get('/poll', (req, res) => {
   const after = Number(req.query.after || 0);
   res.set('Cache-Control', 'no-store');
   res.json({ latest: nextId - 1, messages: messages.filter((m) => m.id > after).slice(-200), agents: [...agents.values()] });
+});
+
+// Full event log for the replay feature.
+app.get('/timeline', (_req, res) => {
+  res.set('Cache-Control', 'no-store');
+  res.json(timeline);
 });
 
 app.post('/say', (req, res) => {

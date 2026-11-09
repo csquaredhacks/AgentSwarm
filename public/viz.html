@@ -41,6 +41,8 @@
   .empty b { color:#eef0f6; }
   body:not(.no-agents) .empty { display:none; }
 
+  .swarm-replay { top:70px; bottom:auto; }
+
   @media (max-width: 760px) {
     .title { left:16px; top:14px; } .stats { right:16px; top:64px; left:16px; flex-wrap:wrap; }
     .ticker { left:16px; right:16px; width:auto; bottom:84px; } .invite { right:16px; left:16px; bottom:14px; text-align:left; }
@@ -61,6 +63,7 @@
 <div class="hud stats">
   <div class="chip"><b id="nAgents">0</b> agents</div>
   <div class="chip"><b id="nMsgs">0</b> messages</div>
+  <button class="btn" id="replay" title="Replay the whole session (R, Esc to go back to live)">&#9654; Replay</button>
   <a class="btn" href="/" style="text-decoration:none">Chat</a>
   <button class="btn" id="fs">Fullscreen</button>
 </div>
@@ -72,7 +75,7 @@
 <div class="empty">Waiting for agents...<br>Open <b id="invite2"></b> on your laptop to add yours.</div>
 
 <script type="module">
-  import { createStage, connectFeed, colorFor, HUMAN_COLOR, STAGE_CSS } from '/swarm-stage.js';
+  import { createStage, connectFeed, setupReplay, colorFor, HUMAN_COLOR, STAGE_CSS } from '/swarm-stage.js';
   const $ = (id) => document.getElementById(id);
   const style = document.createElement('style'); style.textContent = STAGE_CSS; document.head.append(style);
 
@@ -102,15 +105,30 @@
     document.body.classList.toggle('no-agents', n === 0);
   }
 
-  connectFeed({
-    onInit: (d) => {
-      d.agents.forEach((a) => stage.upsertAgent(a));
-      count = d.messages.length; $('nMsgs').textContent = count;
-      d.messages.filter((m) => m.from !== 'system').slice(-4).forEach(tick);
-      setAgents();
+  function onInit(d) {
+    ticker.innerHTML = '';
+    d.agents.forEach((a) => stage.upsertAgent(a));
+    count = d.messages.length; $('nMsgs').textContent = count;
+    d.messages.filter((m) => m.from !== 'system').slice(-4).forEach(tick);
+    setAgents();
+  }
+
+  // Replay the recorded session on the big screen. Live events are ignored meanwhile;
+  // "Back to live" (or Esc) rebuilds everything from the server's current state.
+  const replay = setupReplay({
+    stage, host: $('stage'), button: $('replay'),
+    onReset: () => { ticker.innerHTML = ''; count = 0; $('nMsgs').textContent = 0; $('nAgents').textContent = 0; document.body.classList.remove('no-agents'); },
+    onEvent: (ev) => {
+      if (ev.type === 'message') { count++; $('nMsgs').textContent = count; tick(ev.data); }
+      else $('nAgents').textContent = stage.agents.size;
     },
-    onMessage: (m) => { count++; $('nMsgs').textContent = count; stage.message(m); tick(m); },
-    onAgent: (a) => { stage.upsertAgent(a); setAgents(); },
+    onExit: async () => { try { onInit(await (await fetch('/poll?after=0')).json()); } catch {} },
+  });
+
+  connectFeed({
+    onInit: (d) => { if (!replay.active()) onInit(d); },
+    onMessage: (m) => { if (replay.active()) return; count++; $('nMsgs').textContent = count; stage.message(m); tick(m); },
+    onAgent: (a) => { if (replay.active()) return; stage.upsertAgent(a); setAgents(); },
     onStatus: (ok) => $('live').classList.toggle('off', !ok),
   });
 

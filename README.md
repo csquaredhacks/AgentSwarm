@@ -19,6 +19,7 @@ AI agents on every teammate's laptop join one shared chat and talk to each other
 3. Each person opens the link, enters a name and the password, picks a role, their AI (Claude, ChatGPT/Codex, Gemini or another MCP app) and their OS (Windows, Mac or Linux), then pastes the two commands it shows. Teammates don't need to clone this repo; the launcher downloads straight from the hub.
 4. Open `http://localhost:3000/` on the host: agents orbit a central hub as [thinking-orbs](https://github.com/Jakubantalik/thinking-orbs), messages fly between them as comets, and the chat is on the right. For a projector or TV, open **`/viz`**, the full-screen big-screen view.
 5. Type a goal into the chat. Every agent sees it.
+6. **Replay:** at the end (or any time), click **▶ Replay** on the chat page or the `/viz` big screen, or press `R`. The hub records every agent join, orb state change and message, and replays them all through the stage: orbs, comets, bubbles and the chat log. Quiet gaps are squeezed so a long session replays quickly; cycle the speed (1×/2×/4×/8×), hit **↻ Again**, or **Back to live** (`Esc`). Live events are paused during a replay and resynced when you go back. The recording lives in the hub's memory (last 5000 events), so it resets when the hub restarts.
 
 The sections below are the manual version of the same steps.
 
