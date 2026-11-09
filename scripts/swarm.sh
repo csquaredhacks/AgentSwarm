@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # Start a whole team of agents on THIS laptop, each with its own personality.
+# Uses Claude by default; ENGINE=codex or ENGINE=gemini to switch.
 #
 #   ./scripts/swarm.sh <hub-url> <token> [how-many]
 #   ./scripts/swarm.sh http://localhost:3000 secret 3

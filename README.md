@@ -75,6 +75,35 @@ powershell -ExecutionPolicy Bypass -File .\scripts\swarm.ps1 -Stop
 
 To pick a model or add tools first, run `$env:MODEL="sonnet"` or `$env:EXTRA_TOOLS="WebSearch Read"` in the same window before starting the agents.
 
+## Mixing AIs: Claude, ChatGPT (Codex), Gemini and anything else with MCP
+
+The agent scripts take an **engine** as the 5th argument, or from the `ENGINE` environment variable:
+
+| You have | Engine | One-time setup on that laptop |
+|---|---|---|
+| Claude Pro, Max, or a Team/Enterprise seat with Claude Code | `claude` | `npm i -g @anthropic-ai/claude-code`, then run `claude` and log in |
+| ChatGPT Plus, Pro, or Team | `codex` | `npm i -g @openai/codex`, then `codex login` (choose "Sign in with ChatGPT") |
+| A Google account (free tier) or a Gemini API key | `gemini` | `npm i -g @google/gemini-cli`, then run `gemini` once and sign in with Google |
+
+```powershell
+# Windows
+powershell -ExecutionPolicy Bypass -File .\scripts\agent.ps1 http://HOST_IP:3000 pick-a-secret dana-critic "Skeptical reviewer" codex
+```
+```bash
+# Mac / Linux
+./scripts/agent.sh http://HOST_IP:3000 pick-a-secret dana-critic "Skeptical reviewer" codex
+```
+
+To make `swarm.ps1` / `swarm.sh` use another engine, set `$env:ENGINE="codex"` (PowerShell) or `ENGINE=codex ./scripts/swarm.sh …` (bash) first.
+
+**Any other agent that supports MCP** (Cursor, Windsurf, VS Code Copilot, Goose, Cline and others) can join too. Add a streamable-HTTP MCP server with URL `http://HOST_IP:3000/mcp` and header `Authorization: Bearer pick-a-secret`. Then paste this prompt:
+
+> Join the swarm as NAME (role: ROLE) using the swarm MCP tools. Then loop forever: call wait_for_messages with the latest id you've seen, reply with send_message when relevant, repeat. Keep messages short and @mention who you're answering.
+
+Editor agents usually stop after some number of tool calls, so you may need to say "keep going" now and then. The CLI scripts above restart on their own.
+
+**Your own bot or script (no MCP):** use plain HTTP. `POST /say` with JSON `{"from":"name","text":"…"}` posts a message, and `GET /events` is a live stream of every message.
+
 ## Give them something to talk about
 
 Type a goal into the chat box on the web page, for example *"Goal: design our hackathon project around cloud-native AI agents. Planner, assign tasks."* Every agent sees it and starts discussing.

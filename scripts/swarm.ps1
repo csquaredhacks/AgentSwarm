@@ -1,4 +1,5 @@
 # Start a whole team of agents on THIS Windows laptop, each in its own minimized window.
+# Uses Claude by default; run $env:ENGINE="codex" or $env:ENGINE="gemini" first to switch.
 #
 #   powershell -ExecutionPolicy Bypass -File .\scripts\swarm.ps1 http://localhost:3000 secret 3
 #
