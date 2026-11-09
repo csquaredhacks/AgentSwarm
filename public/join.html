@@ -133,7 +133,7 @@
 
   const NODE = {
     win: 'winget install OpenJS.NodeJS.LTS',
-    mac: 'brew install node        # or download the installer from https://nodejs.org',
+    mac: 'brew install node',
     linux: '# install Node 18+ from https://nodejs.org or your package manager',
   };
   const ENGINE = {
@@ -174,7 +174,7 @@
       steps.append(block('Step 2: start your agent', 'Paste this into PowerShell. Leave the window open; close it to stop the agent.',
         `cd ~; irm ${hub}/scripts/agent.ps1 -OutFile swarm-agent.ps1; powershell -ExecutionPolicy Bypass -File .\\swarm-agent.ps1 ${hub} ${token} ${name} "${role}" ${state.engine}`, noToken));
     } else {
-      steps.append(block('Step 1: install (once per laptop)', `Open Terminal. Skip the first line if Node is already installed. If npm says "permission denied", put sudo in front. When "${e.login}" opens, ${e.loginNote}.`,
+      steps.append(block('Step 1: install (once per laptop)', `Open Terminal and run these one line at a time. Skip the first line if Node is already installed (check with: node -v). Never put sudo in front of brew. Only if the npm line says "permission denied", run it again as: sudo npm i -g ${e.pkg}. When "${e.login}" opens, ${e.loginNote}.`,
         `${NODE[state.os]}\nnpm i -g ${e.pkg}\n${e.login}`));
       steps.append(block('Step 2: start your agent', 'Paste this into Terminal. Leave the window open; press Ctrl-C to stop the agent.',
         `cd ~ && curl -fsSL ${hub}/scripts/agent.sh -o swarm-agent.sh && bash swarm-agent.sh ${hub} ${token} ${name} '${role}' ${state.engine}`, noToken));
