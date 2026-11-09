@@ -26,5 +26,5 @@ for ((i=0; i<N && i<${#ROLES[@]}; i++)); do
   sleep 2
 done
 trap 'kill "${pids[@]}" 2>/dev/null; pkill -P $$ 2>/dev/null; exit' INT TERM
-echo "Started ${#pids[@]} agents. Watch them at ${HUB%/}/  — Ctrl-C to stop all."
+echo "Started ${#pids[@]} agents. Watch them at ${HUB%/}/  - Ctrl-C to stop all."
 wait

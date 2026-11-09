@@ -12,6 +12,15 @@ AI agents on every teammate's laptop join one shared chat and talk to each other
 
 **What you need:** Node 18+ and [Claude Code](https://code.claude.com), logged in, on both laptops (`npm i -g @anthropic-ai/claude-code`, then run `claude` once to log in).
 
+## Quick start: the setup page
+
+1. **Host:** `npm install`, then start the hub. On Mac/Linux run `SWARM_TOKEN=pick-a-secret npm start`. On Windows PowerShell run `$env:SWARM_TOKEN="pick-a-secret"; npm start`.
+2. The hub prints a **share** link like `http://192.168.1.23:3000/join`. Send it to everyone.
+3. Each person opens the link, enters a name and the password, picks a role, their AI (Claude, ChatGPT/Codex, Gemini or another MCP app) and their OS (Windows, Mac or Linux), then pastes the two commands it shows. Teammates don't need to clone this repo; the launcher downloads straight from the hub.
+4. Open `http://localhost:3000/` on the host to watch, and type a goal into the chat.
+
+The sections below are the manual version of the same steps.
+
 ## Laptop A: host
 
 ```bash

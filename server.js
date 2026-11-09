@@ -10,6 +10,7 @@ import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/
 import { z } from 'zod';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
+import os from 'node:os';
 
 const PORT = Number(process.env.PORT || 3000);
 const TOKEN = process.env.SWARM_TOKEN || '';
@@ -213,6 +214,14 @@ app.all('/mcp', (_req, res) => res.status(405).set('Allow', 'POST').end());
 // Web UI
 const here = path.dirname(fileURLToPath(import.meta.url));
 app.get('/', (_req, res) => res.sendFile(path.join(here, 'public', 'index.html')));
+const lanIps = () => Object.values(os.networkInterfaces()).flat()
+  .filter((i) => i && i.family === 'IPv4' && !i.internal).map((i) => i.address);
+app.get('/info', (_req, res) => res.json({ ips: lanIps(), port: PORT }));
+app.get('/join', (_req, res) => res.sendFile(path.join(here, 'public', 'join.html')));
+// Teammates download the launcher straight from the hub, so they don't need to clone the repo.
+app.use('/scripts', express.static(path.join(here, 'scripts'), {
+  setHeaders: (res) => res.set('Content-Type', 'text/plain; charset=utf-8'),
+}));
 
 app.get('/events', (req, res) => {
   res.set({ 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', Connection: 'keep-alive' });
@@ -234,7 +243,9 @@ app.post('/say', (req, res) => {
 });
 
 app.listen(PORT, '0.0.0.0', () => {
+  const ips = lanIps();
   console.log(`swarm hub on :${PORT}`);
   console.log(`  chat UI : http://localhost:${PORT}/`);
+  for (const ip of ips) console.log(`  share   : http://${ip}:${PORT}/join   <- send this to teammates`);
   console.log(`  MCP     : http://<your-ip>:${PORT}/mcp${TOKEN ? '  (bearer token required)' : '  (no token set — anyone on the network can join)'}`);
 });

@@ -1,0 +1,186 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Join the Swarm</title>
+<style>
+  :root { --bg:#0b0b0d; --panel:#141418; --line:#26262c; --ink:#e9e9ee; --dim:#8a8a96; --accent:#9ad1ff; --warn:#ffd68a; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink); font:15px/1.5 ui-sans-serif, system-ui, -apple-system, sans-serif; }
+  .wrap { max-width:760px; margin:0 auto; padding:32px 16px 64px; }
+  h1 { font-size:26px; margin:0 0 4px; }
+  .sub { color:var(--dim); margin:0 0 24px; }
+  .sub a { color:var(--accent); }
+  .card { background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:20px; margin:0 0 16px; }
+  .grid { display:grid; grid-template-columns:1fr 1fr; gap:14px; }
+  @media (max-width:600px) { .grid { grid-template-columns:1fr; } }
+  label { display:block; font-size:12px; text-transform:uppercase; letter-spacing:.06em; color:var(--dim); margin:0 0 6px; }
+  input, select { width:100%; background:var(--bg); color:var(--ink); border:1px solid var(--line); border-radius:8px; padding:10px 12px; font:inherit; }
+  .seg { display:flex; gap:6px; flex-wrap:wrap; }
+  .seg button { flex:1; min-width:90px; background:var(--bg); color:var(--ink); border:1px solid var(--line); border-radius:8px; padding:10px; font:inherit; cursor:pointer; }
+  .seg button.on { border-color:var(--accent); background:#1a2633; color:var(--accent); font-weight:600; }
+  .full { grid-column:1 / -1; }
+  h2 { font-size:16px; margin:0 0 4px; }
+  .hint { color:var(--dim); font-size:13px; margin:0 0 10px; }
+  .code { position:relative; }
+  pre { margin:0; background:#050507; border:1px solid var(--line); border-radius:8px; padding:14px 14px; padding-right:76px; overflow-x:auto; white-space:pre-wrap; word-break:break-all; font:13px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+  .copy { position:absolute; top:8px; right:8px; background:var(--accent); color:#000; border:0; border-radius:6px; padding:5px 10px; font-weight:600; cursor:pointer; font-size:12px; }
+  .warn { color:var(--warn); font-size:13px; margin:10px 0 0; }
+  .share { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+  .share code { background:#050507; border:1px solid var(--line); border-radius:6px; padding:4px 8px; }
+  details summary { cursor:pointer; color:var(--accent); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Join the Swarm</h1>
+  <p class="sub">Fill this in, then paste the two commands into a terminal on your laptop. Your agent will show up in the <a href="/">live chat</a>.</p>
+
+  <div class="card" id="shareCard" hidden>
+    <h2>Share this page with teammates</h2>
+    <div class="share" id="shareLinks"></div>
+    <p class="hint" style="margin-top:8px">They must be on the same Wi-Fi. If the link won't open on their laptop, see "Can't connect?" at the bottom.</p>
+  </div>
+
+  <div class="card grid">
+    <div><label for="name">Agent name</label><input id="name" placeholder="alice-planner" /></div>
+    <div><label for="token">Swarm password</label><input id="token" placeholder="ask the host" /></div>
+    <div class="full"><label for="rolePick">Role</label>
+      <select id="rolePick">
+        <option value="Product planner. Breaks the goal into small tasks, assigns them by @mention, keeps everyone focused.">Planner</option>
+        <option value="Hands-on engineer. Proposes concrete implementations, tech choices and code-level details.">Builder</option>
+        <option value="Skeptical reviewer. Finds risks and edge cases, but always suggests a fix.">Critic</option>
+        <option value="Researcher. Brings in relevant facts, prior art, APIs and libraries.">Researcher</option>
+        <option value="UX and demo designer. Makes the demo easy to follow and impressive to judges.">Designer</option>
+        <option value="Pitch lead. Turns the work into a crisp story, a name and a 2-minute demo script.">Pitcher</option>
+        <option value="custom">Custom...</option>
+      </select>
+      <input id="roleCustom" placeholder="Describe what this agent does" style="margin-top:8px" hidden />
+    </div>
+    <div class="full"><label>Your AI</label>
+      <div class="seg" id="engine">
+        <button data-v="claude" class="on">Claude</button>
+        <button data-v="codex">ChatGPT (Codex)</button>
+        <button data-v="gemini">Gemini</button>
+        <button data-v="other">Other MCP app</button>
+      </div>
+    </div>
+    <div class="full" id="osRow"><label>Your computer</label>
+      <div class="seg" id="os">
+        <button data-v="win">Windows</button>
+        <button data-v="mac">Mac</button>
+        <button data-v="linux">Linux</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="steps"></div>
+
+  <div class="card">
+    <details>
+      <summary>Can't connect?</summary>
+      <p class="hint" style="margin-top:10px">If <code id="hubUrl"></code> won't open on a teammate's laptop: on the host, allow Node.js through the firewall (on Windows, run this in an admin PowerShell: <code>New-NetFirewallRule -DisplayName AgentSwarm -Direction Inbound -Protocol TCP -LocalPort 3000 -Action Allow</code>). If the Wi-Fi blocks laptop-to-laptop traffic, run <code>npx cloudflared tunnel --url http://localhost:3000</code> on the host and share the <code>https://...trycloudflare.com/join</code> link it prints instead. This page updates all the commands automatically.</p>
+    </details>
+  </div>
+</div>
+
+<script>
+  const $ = (id) => document.getElementById(id);
+  let hub = location.origin;
+  $('hubUrl').textContent = hub;
+  const isLocal = /^(localhost|127\.|\[::1\])/.test(location.hostname);
+
+  // Show shareable LAN links when the host opens this page on localhost.
+  fetch('/info').then((r) => r.json()).then((info) => {
+    if (!isLocal || !info.ips.length) return;
+    // Opened on the host itself: build commands with the LAN address so they work on any laptop.
+    hub = `http://${info.ips[0]}:${info.port}`;
+    $('hubUrl').textContent = hub;
+    render();
+    $('shareCard').hidden = false;
+    for (const ip of info.ips) {
+      const u = `http://${ip}:${info.port}/join`;
+      const c = document.createElement('code'); c.textContent = u; $('shareLinks').append(c);
+    }
+  }).catch(() => {});
+
+  const state = { engine: 'claude', os: /Mac/i.test(navigator.platform) ? 'mac' : /Linux/i.test(navigator.platform) ? 'linux' : 'win' };
+  const load = (k, d) => { try { return localStorage.getItem('join-' + k) ?? d; } catch { return d; } };
+  const save = (k, v) => { try { localStorage.setItem('join-' + k, v); } catch {} };
+  $('name').value = load('name', ''); $('token').value = load('token', '');
+  state.engine = load('engine', state.engine); state.os = load('os', state.os);
+
+  function seg(id, key) {
+    const el = $(id);
+    const sync = () => el.querySelectorAll('button').forEach((b) => b.classList.toggle('on', b.dataset.v === state[key]));
+    el.addEventListener('click', (e) => { const b = e.target.closest('button'); if (!b) return; state[key] = b.dataset.v; save(key, state[key]); sync(); render(); });
+    sync();
+  }
+  seg('engine', 'engine'); seg('os', 'os');
+
+  ['name', 'token', 'roleCustom'].forEach((id) => $(id).addEventListener('input', () => { save(id, $(id).value); render(); }));
+  $('rolePick').addEventListener('change', () => { $('roleCustom').hidden = $('rolePick').value !== 'custom'; render(); });
+
+  const clean = (s, bad) => s.replace(bad, '').trim();
+  function values() {
+    const name = clean($('name').value, /[^A-Za-z0-9_-]/g).slice(0, 40) || 'my-agent';
+    const token = clean($('token').value, /[^A-Za-z0-9_.-]/g) || 'PASSWORD';
+    const raw = $('rolePick').value === 'custom' ? $('roleCustom').value : $('rolePick').value;
+    const role = clean(raw, /["'`$\\]/g).slice(0, 200) || 'general teammate';
+    return { name, token, role };
+  }
+
+  const NODE = {
+    win: 'winget install OpenJS.NodeJS.LTS',
+    mac: 'brew install node        # or download the installer from https://nodejs.org',
+    linux: '# install Node 18+ from https://nodejs.org or your package manager',
+  };
+  const ENGINE = {
+    claude: { pkg: '@anthropic-ai/claude-code', login: 'claude', loginNote: 'log in with your Claude account, then type /exit' },
+    codex: { pkg: '@openai/codex', login: 'codex login', loginNote: 'choose "Sign in with ChatGPT"' },
+    gemini: { pkg: '@google/gemini-cli', login: 'gemini', loginNote: 'sign in with Google, then type /quit' },
+  };
+
+  function block(title, hint, code, warn) {
+    const card = document.createElement('div'); card.className = 'card';
+    card.innerHTML = '<h2></h2><p class="hint"></p><div class="code"><pre></pre><button class="copy">Copy</button></div>';
+    card.querySelector('h2').textContent = title;
+    card.querySelector('.hint').textContent = hint;
+    card.querySelector('pre').textContent = code;
+    card.querySelector('.copy').onclick = (e) => { navigator.clipboard.writeText(code); e.target.textContent = 'Copied'; setTimeout(() => (e.target.textContent = 'Copy'), 1200); };
+    if (warn) { const w = document.createElement('p'); w.className = 'warn'; w.textContent = warn; card.append(w); }
+    return card;
+  }
+
+  function render() {
+    const { name, token, role } = values();
+    const steps = $('steps'); steps.innerHTML = '';
+    $('osRow').hidden = state.engine === 'other';
+    const noToken = token === 'PASSWORD' ? 'Fill in the swarm password above (ask the host).' : '';
+
+    if (state.engine === 'other') {
+      steps.append(block('Add the swarm as an MCP server', 'In Cursor, VS Code, Windsurf, Goose, Cline or any MCP app, add a remote (streamable HTTP) server with these settings:',
+        JSON.stringify({ mcpServers: { swarm: { url: `${hub}/mcp`, headers: { Authorization: `Bearer ${token}` } } } }, null, 2), noToken));
+      steps.append(block('Then tell your agent', 'Paste this into the agent chat. Editor agents may stop after a while; say "keep going".',
+        `Join the swarm as ${name} (role: ${role}) using the swarm MCP tools. Then loop forever: call wait_for_messages with the latest id you've seen, reply with send_message when relevant, repeat. Keep messages short and @mention who you're answering.`));
+      return;
+    }
+
+    const e = ENGINE[state.engine];
+    if (state.os === 'win') {
+      steps.append(block('Step 1: install (once per laptop)', `Open PowerShell. Skip the first line if Node is already installed. When "${e.login}" opens, ${e.loginNote}.`,
+        `${NODE.win}\nSet-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass\nnpm i -g ${e.pkg}\n${e.login}`));
+      steps.append(block('Step 2: start your agent', 'Paste this into PowerShell. Leave the window open; close it to stop the agent.',
+        `cd ~; irm ${hub}/scripts/agent.ps1 -OutFile swarm-agent.ps1; powershell -ExecutionPolicy Bypass -File .\\swarm-agent.ps1 ${hub} ${token} ${name} "${role}" ${state.engine}`, noToken));
+    } else {
+      steps.append(block('Step 1: install (once per laptop)', `Open Terminal. Skip the first line if Node is already installed. If npm says "permission denied", put sudo in front. When "${e.login}" opens, ${e.loginNote}.`,
+        `${NODE[state.os]}\nnpm i -g ${e.pkg}\n${e.login}`));
+      steps.append(block('Step 2: start your agent', 'Paste this into Terminal. Leave the window open; press Ctrl-C to stop the agent.',
+        `cd ~ && curl -fsSL ${hub}/scripts/agent.sh -o swarm-agent.sh && bash swarm-agent.sh ${hub} ${token} ${name} '${role}' ${state.engine}`, noToken));
+    }
+  }
+  render();
+</script>
+</body>
+</html>
