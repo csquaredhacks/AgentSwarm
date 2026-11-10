@@ -19,6 +19,7 @@
   .title .sub { color:#8b8fa3; font-size:12.5px; margin-top:2px; }
   .live { display:inline-flex; align-items:center; gap:7px; font-size:11px; letter-spacing:.18em; text-transform:uppercase; color:#79e6b8; }
   .live::before { content:''; width:8px; height:8px; border-radius:50%; background:#79e6b8; box-shadow:0 0 10px #79e6b8; animation:pulse 1.6s infinite; }
+  .live.replay { color:#ffd68a; } .live.replay::before { background:#ffd68a; box-shadow:0 0 10px #ffd68a; }
   .live.off { color:#ff8f8f; } .live.off::before { background:#ff8f8f; box-shadow:0 0 10px #ff8f8f; }
   @keyframes pulse { 50% { opacity:.35; } }
 
@@ -62,6 +63,8 @@
   <div class="chip"><b id="nAgents">0</b> agents</div>
   <div class="chip"><b id="nMsgs">0</b> messages</div>
   <a class="btn" href="/" style="text-decoration:none">Chat</a>
+  <button class="btn" id="replay" title="Replay the whole conversation (good for recording videos)">&#9654; Replay</button>
+  <select class="btn" id="speed" title="Replay speed"><option value="1">1x</option><option value="2" selected>2x</option><option value="4">4x</option></select>
   <button class="btn" id="fs">Fullscreen</button>
 </div>
 
@@ -109,7 +112,7 @@
       d.messages.filter((m) => m.from !== 'system').slice(-4).forEach(tick);
       setAgents();
     },
-    onMessage: (m) => { count++; $('nMsgs').textContent = count; stage.message(m); tick(m); },
+    onMessage: (m) => { if (replaying) { liveQueue.push(m); return; } count++; $('nMsgs').textContent = count; stage.message(m); tick(m); },
     onAgent: (a) => { stage.upsertAgent(a); setAgents(); },
     onStatus: (ok) => $('live').classList.toggle('off', !ok),
   });
@@ -120,6 +123,45 @@
   fetch('/info').then((r) => r.json()).then((info) => {
     if (isLocal && info.ips.length) invite = `http://${info.ips[0]}:${info.port}/join`;
   }).catch(() => {}).finally(() => { $('invite').textContent = invite.replace(/^https?:\/\//, ''); $('invite2').textContent = invite.replace(/^https?:\/\//, ''); });
+
+  // ---------- replay: re-run the stored conversation on a compressed timeline ----------
+  let replaying = false, liveQueue = [], replayTimer = null;
+  const sleep = (ms) => new Promise((r) => (replayTimer = setTimeout(r, ms)));
+  function stopReplay() {
+    replaying = false; clearTimeout(replayTimer);
+    $('replay').innerHTML = '&#9654; Replay';
+    const live = $('live'); live.classList.remove('replay'); live.textContent = 'live';
+    // catch up on anything that arrived while replaying
+    for (const m of liveQueue.splice(0)) { count++; stage.message(m); tick(m); }
+  }
+  async function startReplay() {
+    const d = await fetch('/poll?after=0', { cache: 'no-store' }).then((r) => r.json()).catch(() => null);
+    const msgs = (d?.messages || []).filter((m) => m.from !== 'system');
+    if (!msgs.length) { alert('Nothing to replay yet: no messages on the hub.'); return; }
+    replaying = true; liveQueue = [];
+    $('replay').innerHTML = '&#9632; Stop';
+    const live = $('live'); live.classList.add('replay'); live.textContent = 'replay';
+    ticker.replaceChildren();
+    count = 0; $('nMsgs').textContent = 0;
+    (d.agents || []).forEach((a) => stage.upsertAgent(a));
+    setAgents();
+    await sleep(800);
+    for (let i = 0; i < msgs.length && replaying; i++) {
+      const m = msgs[i];
+      if (!m.from.startsWith('\u{1F464}') && !stage.agents.has(m.from)) { stage.upsertAgent({ name: m.from, state: 'talking', note: '' }); setAgents(); }
+      count++; $('nMsgs').textContent = count;
+      stage.message(m); tick(m);
+      const next = msgs[i + 1];
+      if (!next) break;
+      const speed = Number($('speed').value) || 1;
+      const gap = Math.min(2600, Math.max(900, (next.ts - m.ts) / 4)) / speed;
+      await sleep(gap);
+      if (!replaying) return;
+    }
+    if (replaying) { await sleep(2500); if (replaying) stopReplay(); }
+  }
+  $('replay').onclick = () => (replaying ? stopReplay() : startReplay());
+  if (new URLSearchParams(location.search).has('replay')) setTimeout(startReplay, 1200);
 
   $('fs').onclick = () => (document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen?.());
   let idle;
